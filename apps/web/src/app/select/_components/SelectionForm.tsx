@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -19,16 +19,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Info, BookOpen } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, titleCase } from "@/lib/utils";
 import { useData } from "@/contexts/dataContext";
 import ErrorDisplay from "@/components/ErrorDisplay";
 import { Spinner } from "@/components/ui/spinner";
+import { getLastSelection, saveLastSelection } from "@/lib/journey";
 
-const cap = (s?: string) => (s ? s.replace(/-/g, " ").toUpperCase() : "");
+const cap = (s?: string) => titleCase(s);
 const semName = (id: string) => `Semester ${id.replace("s", "").replace(/^0+/, "")}`;
 const semNum = (id: string) => Number(id.replace(/\D/g, "")) || 999;
 
@@ -58,6 +58,40 @@ export function SelectionForm() {
   const [sem, setSem] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("");
+  const [lastSelection] = useState(() => getLastSelection());
+  const hydratedFromUrl = useRef(false);
+
+  // Breadcrumbs across the app link here with ?university=&program=&scheme=.
+  // Honor them: land the visitor on the right step with state restored,
+  // instead of silently resetting to step 1.
+  useEffect(() => {
+    if (hydratedFromUrl.current) return;
+    if (!universities || !universities.length) return;
+    const q = new URLSearchParams(window.location.search);
+    const qu = q.get("university");
+    if (!qu || !universities.includes(qu)) return;
+    hydratedFromUrl.current = true;
+    const qp = q.get("program");
+    const qsch = q.get("scheme");
+    (async () => {
+      setIsLoading(true);
+      setLoadingMessage("Restoring your place...");
+      await ensureUniversity(qu);
+      setU(qu);
+      if (qp && qsch) {
+        setP(qp);
+        setSch(qsch);
+        setStep(4);
+      } else if (qp) {
+        setP(qp);
+        setStep(3);
+      } else {
+        setStep(2);
+      }
+      setIsLoading(false);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [universities]);
 
   const steps = ["University", "Program", "Scheme", "Semester"];
 
@@ -73,7 +107,7 @@ export function SelectionForm() {
   ) => {
     setIsLoading(true);
     setLoadingMessage(message);
-    await Promise.all([task?.(), new Promise((r) => setTimeout(r, 600))]);
+    await Promise.all([task?.(), new Promise((r) => setTimeout(r, 200))]);
     fn();
     setIsLoading(false);
     setStep(nextStep);
@@ -87,12 +121,14 @@ export function SelectionForm() {
     setStep(level);
   };
 
-  const submit = async () => {
-    if (!u || !p || !sch || !sem) return;
+  // Takes the semester id directly: reading `sem` state here would race the
+  // setState from the same click (the old first-tap-does-nothing bug).
+  const submit = (semId: string) => {
+    if (!u || !p || !sch) return;
+    saveLastSelection({ university: u, program: p, scheme: sch, semester: semId });
     setIsLoading(true);
-    setLoadingMessage("Loading syllabus modules...");
-    await new Promise((r) => setTimeout(r, 800));
-    router.push(`/${u}/${p}/${sch}/${sem}`);
+    setLoadingMessage("Loading your subjects...");
+    router.push(`/${u}/${p}/${sch}/${semId}`);
   };
 
   if (isFetching) return null;
@@ -137,7 +173,7 @@ export function SelectionForm() {
         </CardDescription>
       </CardHeader>
 
-        <CardContent className="space-y-4 flex items-center justify-center min-h-[300px] px-4">
+        <CardContent className="space-y-4 flex items-center justify-center min-h-[220px] md:min-h-[300px] px-4">
         <AnimatePresence mode="wait">
           {isLoading ? (
             <MotionDiv
@@ -167,6 +203,22 @@ export function SelectionForm() {
               {step === 1 && (
                 <MotionDiv key="step1" variants={stepVariants} initial="hidden" animate="visible" exit="exit" className="flex justify-center">
                   <div className="space-y-4 flex flex-col items-center">
+                    {lastSelection && universities.includes(lastSelection.university) && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          router.push(
+                            `/${lastSelection.university}/${lastSelection.program}/${lastSelection.scheme}/${lastSelection.semester}`
+                          )
+                        }
+                        className="w-full max-w-[320px] text-left p-3 rounded-xl border border-primary/40 bg-primary/5 hover:bg-primary/10 transition-colors"
+                      >
+                        <p className="text-xs text-muted-foreground">Continue where you left off</p>
+                        <p className="text-sm font-semibold">
+                          {cap(lastSelection.program)} · {semName(lastSelection.semester)}
+                        </p>
+                      </button>
+                    )}
                     <Label className="text-lg font-bold">1. Select Your University</Label>
                     <Select
                       onValueChange={(v) =>
@@ -175,10 +227,10 @@ export function SelectionForm() {
                         )
                       }
                     >
-                      <SelectTrigger className="w-[280px] py-3 px-3 rounded-xl border border-purple-300 bg-white dark:bg-gray-900 shadow-sm">
+                      <SelectTrigger className="w-full max-w-[320px] py-3 px-3 rounded-xl border border-purple-300 bg-white dark:bg-gray-900 shadow-sm">
                         <SelectValue placeholder="Choose a university" />
                       </SelectTrigger>
-                      <SelectContent className="w-[280px] rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-lg max-h-[200px] overflow-y-auto">
+                      <SelectContent className="w-full max-w-[320px] rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-lg max-h-[200px] overflow-y-auto">
                         {[...universities]
                           .sort((a, b) => cap(a).localeCompare(cap(b)))
                           .map((id) => (
@@ -196,11 +248,26 @@ export function SelectionForm() {
                 <MotionDiv key="step2" variants={stepVariants} initial="hidden" animate="visible" exit="exit" className="flex justify-center">
                   <div className="space-y-4 flex flex-col items-center">
                     <Label className="text-lg font-bold">2. Choose Your Program</Label>
-                    <Select value={p ?? ""} onValueChange={(v) => loadStep("Loading schemes...", 3, () => setP(v))}>
-                      <SelectTrigger className="w-[280px] py-3 px-3 rounded-xl border border-purple-300 bg-white dark:bg-gray-900 shadow-sm">
+                    <Select
+                      value={p ?? ""}
+                      onValueChange={(v) => {
+                        // One scheme? Choosing from a single option is not a
+                        // decision: skip straight to semesters.
+                        const schemes = u ? Object.keys(directory[u]?.[v] ?? {}) : [];
+                        if (schemes.length === 1) {
+                          loadStep("Loading semesters...", 4, () => {
+                            setP(v);
+                            setSch(schemes[0]);
+                          });
+                        } else {
+                          loadStep("Loading schemes...", 3, () => setP(v));
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="w-full max-w-[320px] py-3 px-3 rounded-xl border border-purple-300 bg-white dark:bg-gray-900 shadow-sm">
                         <SelectValue placeholder="Select Program" />
                       </SelectTrigger>
-                      <SelectContent className="w-[280px] rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-lg max-h-[200px] overflow-y-auto">
+                      <SelectContent className="w-full max-w-[320px] rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-lg max-h-[200px] overflow-y-auto">
                         {Object.keys(uniData)
                           .sort((a, b) => cap(a).localeCompare(cap(b)))
                           .map((id) => (
@@ -237,7 +304,7 @@ export function SelectionForm() {
                           key={id}
                           type="button"
                           className={cn(
-                            "p-4 rounded-lg border-2 transition hover:shadow-lg hover:bg-purple-500 cursor-pointer",
+                            "p-4 rounded-lg border-2 transition hover:shadow-lg hover:bg-primary/15 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
                             sch === id ? "border-primary bg-primary/10" : "border-purple-700"
                           )}
                           onClick={() => loadStep("Loading semesters...", 4, () => setSch(id))}
@@ -253,28 +320,51 @@ export function SelectionForm() {
               {step === 4 && schemeData && (
                 <MotionDiv key="step4" variants={stepVariants} initial="hidden" animate="visible" exit="exit" className="space-y-3 w-full">
                   <Label className="text-center block font-semibold">4. Pick Semester</Label>
-                    <RadioGroup value={sem ?? ""} className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       {Object.keys(schemeData)
                         .sort((a, b) => semNum(a) - semNum(b))
                         .map((id) => (
-                          <div
+                          <button
                             key={id}
+                            type="button"
+                            aria-label={`Open ${semName(id)}`}
                             className={cn(
-                              "rounded-lg p-4 border-2 hover:shadow-lg hover:bg-purple-500 transition cursor-pointer",
+                              "rounded-lg p-4 border-2 transition cursor-pointer hover:shadow-lg hover:bg-primary/15",
+                              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
                               sem === id ? "border-primary bg-primary/10" : "border-purple-700"
                             )}
                             onClick={() => {
                               setSem(id);
-                              submit();
+                              submit(id);
                             }}
                           >
-                            <RadioGroupItem value={id} className="sr-only" />
                             <BookOpen className="h-5 w-5 mb-1 mx-auto" />
                             <p className="text-xs font-semibold text-center">{semName(id)}</p>
-                          </div>
+                          </button>
                         ))}
-                    </RadioGroup>
-
+                    </div>
+                    {(() => {
+                      const nums = Object.keys(schemeData)
+                        .map(semNum)
+                        .sort((a, b) => a - b);
+                      const hasGaps =
+                        nums.length > 0 &&
+                        (nums[0] > 1 || nums[nums.length - 1] - nums[0] + 1 !== nums.length);
+                      return hasGaps ? (
+                        <p className="text-xs text-muted-foreground text-center pt-2">
+                          Not seeing your semester? It has not been contributed yet.{" "}
+                          <a
+                            href="https://github.com/The-Purple-Movement/WikiSyllabus"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="underline text-primary"
+                          >
+                            Add it on WikiSyllabus
+                          </a>{" "}
+                          and it appears here for everyone.
+                        </p>
+                      ) : null;
+                    })()}
                 </MotionDiv>
               )}
             </>

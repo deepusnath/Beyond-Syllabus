@@ -77,6 +77,12 @@ export default function BrainstormPage() {
     setModuleContent(params.get("content") || "");
   }, []);
 
+  useEffect(() => {
+    document.title = moduleTitle
+      ? `Brainstorm: ${moduleTitle} | Beyond Syllabus`
+      : "Guided Brainstorm | Beyond Syllabus";
+  }, [moduleTitle]);
+
   // Restore a previously built sheet for this module
   useEffect(() => {
     if (!storageKey) return;
@@ -167,7 +173,14 @@ export default function BrainstormPage() {
 
   const sendToClass = async () => {
     const code = classCode.trim().toUpperCase();
-    if (!code || !sheet.length || sending) return;
+    if (!sheet.length || sending) return;
+    // Never fail silently: say exactly what is missing.
+    if (code.length < 6) {
+      toast.error(
+        "Class codes are 6 characters (like KM6ZJ8). Your teacher gets one by creating a classroom on the For Teachers page."
+      );
+      return;
+    }
     setSending(true);
     try {
       await orpc.classroom.submit.call({
@@ -312,7 +325,7 @@ export default function BrainstormPage() {
                     key={q}
                     type="button"
                     onClick={() => addToSheet(q, "ai")}
-                    className="text-left text-xs px-3 py-1.5 rounded-xl border border-primary/30 bg-primary/5 hover:bg-primary/15 transition-colors"
+                    className="text-left text-xs px-3 py-1.5 rounded-xl border border-primary/30 bg-primary/5 hover:bg-primary/15 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   >
                     <Plus className="h-3 w-3 inline mr-1" />
                     {q}
@@ -327,6 +340,7 @@ export default function BrainstormPage() {
             onSend={handleSend}
             disabled={loading}
             onModelChange={setModel}
+            showModelSelector={false}
           />
         </div>
 
@@ -347,6 +361,7 @@ export default function BrainstormPage() {
                 disabled={!sheet.length}
                 onClick={exportSheet}
                 title="Download as markdown"
+                aria-label="Download question sheet as markdown"
               >
                 <Download className="h-4 w-4" />
               </Button>
@@ -388,25 +403,40 @@ export default function BrainstormPage() {
             </ul>
 
             {sheet.length > 0 && (
-              <div className="flex gap-2 items-center border-t border-border/50 pt-3">
-                <input
-                  value={classCode}
-                  onChange={(e) => setClassCode(e.target.value.toUpperCase())}
-                  placeholder="Class code"
-                  maxLength={6}
-                  className="w-24 text-xs font-mono tracking-widest rounded-lg border border-border/60 bg-background px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary/40"
-                />
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 flex-1"
-                  disabled={classCode.trim().length < 6 || sending}
-                  onClick={sendToClass}
-                  title="Send your questions to your teacher, anonymously"
-                >
-                  <Send className="h-3.5 w-3.5 mr-1" />
-                  {sending ? "Sending…" : "Send to class"}
-                </Button>
+              <div className="border-t border-border/50 pt-3 space-y-1.5">
+                <div className="flex gap-2 items-center">
+                  <input
+                    value={classCode}
+                    onChange={(e) => setClassCode(e.target.value.toUpperCase())}
+                    placeholder="Class code"
+                    maxLength={6}
+                    aria-label="6-character class code from your teacher"
+                    className="w-24 text-xs font-mono tracking-widest rounded-lg border border-border/60 bg-background px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 flex-1"
+                    disabled={sending}
+                    onClick={sendToClass}
+                    title="Send your questions to your teacher, anonymously"
+                  >
+                    <Send className="h-3.5 w-3.5 mr-1" />
+                    {sending ? "Sending…" : "Send to class"}
+                  </Button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  {classCode.trim().length > 0 && classCode.trim().length < 6
+                    ? `${6 - classCode.trim().length} more character${
+                        6 - classCode.trim().length === 1 ? "" : "s"
+                      } to go. `
+                    : ""}
+                  Sending is anonymous. Teachers create the 6-character code on{" "}
+                  <Link href="/teach" className="underline hover:text-primary">
+                    the For Teachers page
+                  </Link>
+                  .
+                </p>
               </div>
             )}
 

@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getLastSelection, LastSelection } from "@/lib/journey";
+import { titleCase } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { GraduationCap, BookOpenCheck, BarChart3, ChevronRight, Sparkles } from "lucide-react";
@@ -15,6 +17,15 @@ import { Spinner } from "@/components/ui/spinner";
 export default function Home() {
   const router = useRouter();
   const [loadingRoute, setLoadingRoute] = useState<string | null>(null);
+  const [lastSel, setLastSel] = useState<LastSelection | null>(null);
+
+  useEffect(() => {
+    setLastSel(getLastSelection());
+  }, []);
+
+  const semesterPath = lastSel
+    ? `/${lastSel.university}/${lastSel.program}/${lastSel.scheme}/${lastSel.semester}`
+    : null;
 
   const navigateWithDelay = async (path: string, delay: number): Promise<void> => {
     setLoadingRoute(path);
@@ -45,44 +56,80 @@ export default function Home() {
               </AuroraText>
             </h1>
             <p className="max-w-2xl text-lg md:text-xl text-black dark:text-white mt-4">
-              Your modern, AI-powered guide to the university curriculum.
-              Explore subjects, understand modules, and unlock your potential.
+              Walk into class with questions worth asking. Your syllabus,
+              turned into a thinking tool: brainstorm before class, build your
+              question sheet, and track where you actually stand.
             </p>
 
             <div className="flex flex-col md:flex-row justify-center gap-4 mt-8 ">
+              {semesterPath ? (
+                <Button
+                  size="lg"
+                  className="group shadow-lg w-full md:w-auto h-[44px] bg-[#8800ff]"
+                  asChild
+                >
+                  <Link href={semesterPath}>
+                    Continue: {titleCase(lastSel!.program)} · Sem{" "}
+                    {lastSel!.semester.replace(/\D/g, "")}
+                    <ChevronRight className="h-5 w-5 ml-2 group-hover:translate-x-1 transition-transform" />
+                  </Link>
+                </Button>
+              ) : (
+                <Button
+                  size="lg"
+                  className="group shadow-lg w-full md:w-auto h-[44px] bg-[#8800ff]"
+                  asChild
+                  disabled={loadingRoute === "/select"}
+                >
+                  <Link href="/select" onClick={() => navigateWithDelay("/select", 300)}>
+                    {loadingRoute ? (
+                      <>
+                        <Spinner className="h-5 w-5 mr-2" />
+                        Loading...
+                      </>
+                    ) : (
+                      <>
+                        Find your syllabus
+                        <ChevronRight className="h-5 w-5 ml-2 group-hover:translate-x-1 transition-transform" />
+                      </>
+                    )}
+                  </Link>
+                </Button>
+              )}
+
               <Button
                 asChild
                 size="lg"
                 variant="secondary"
                 className="w-full md:w-auto flex items-center justify-center gap-2 h-[44px]"
               >
-                <Link href="/chat">
+                <Link href="/journey">
                   <Sparkles className="h-5 w-5 text-amber-400" />
-                  AI Chat
-                </Link>
-              </Button>
-
-              <Button
-                size="lg"
-                className="group shadow-lg w-full md:w-auto h-[44px] bg-[#8800ff]"
-                asChild
-                disabled={loadingRoute === "/select"}
-              >
-                <Link href="/select" onClick={() => navigateWithDelay("/select", 800)}>
-                  {loadingRoute ? (
-                    <>
-                      <Spinner className="h-5 w-5 mr-2" />
-                      Loading Syllabus...
-                    </>
-                  ) : (
-                    <>
-                      Explore Your Syllabus
-                      <ChevronRight className="h-5 w-5 ml-2 group-hover:translate-x-1 transition-transform" />
-                    </>
-                  )}
+                  My Journey
                 </Link>
               </Button>
             </div>
+
+            {semesterPath && (
+              <p className="text-sm text-muted-foreground mt-4">
+                Different course?{" "}
+                <Link href="/select" className="underline hover:text-primary">
+                  Find another syllabus
+                </Link>
+              </p>
+            )}
+
+            <p className="text-sm text-muted-foreground mt-6">
+              Free and open source. No account needed. Built on{" "}
+              <Link
+                href="https://github.com/The-Purple-Movement/WikiSyllabus"
+                target="_blank"
+                className="underline hover:text-primary"
+              >
+                WikiSyllabus
+              </Link>
+              , the open syllabus commons.
+            </p>
           </div>
         </section>
 
@@ -93,12 +140,12 @@ export default function Home() {
                 Key Features
               </div>
               <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight text-black dark:text-white">
-                Learn Smarter, Not Harder
+                The class works better when you arrive curious
               </h2>
               <p className="max-w-[900px] mx-auto text-gray-700 dark:text-gray-300 md:text-xl leading-relaxed">
-                Our platform is designed to streamline your learning process,
-                from understanding complex topics to finding the best study
-                materials.
+                Beyond Syllabus is built for the flipped classroom: the AI
+                helps you sharpen questions before class instead of handing
+                you answers after it.
               </p>
             </div>
           </div>
@@ -106,18 +153,18 @@ export default function Home() {
           <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3 max-w-6xl mx-auto px-4 md:px-6">
             <FeatureCard
               icon={<BookOpenCheck className="h-8 w-8 text-purple-700" />}
-              title="Structured Syllabus"
-              description="Access your complete university syllabus, broken down by program, semester, and subject."
+              title="Brainstorm before class"
+              description="A three-stage guided session on any module: prime what you know, explore the edges, and leave with sharp questions."
             />
             <FeatureCard
               icon={<GraduationCap className="h-8 w-8 text-purple-700" />}
-              title="AI-Powered Insights"
-              description="Get concise summaries of your syllabus modules and chat with an AI to grasp key concepts quickly."
+              title="Your Question Sheet"
+              description="Collect the questions worth asking, export them as markdown, or send them to your teacher's classroom anonymously."
             />
             <FeatureCard
               icon={<BarChart3 className="h-8 w-8 text-purple-700" />}
-              title="Learning Tools"
-              description="Generate learning tasks and discover real-world applications for each module."
+              title="Journey and exam runway"
+              description="Track where you stand module by module and get a revision plan built around your weak spots. All on your device, no account."
             />
           </div>
         </section>
